@@ -3,7 +3,7 @@ program  PL0;
 {带有代码生成的PL0编译程序}
 uses Sysutils;
 const
-  norw = 13; {保留字的个数}
+  norw = 11; {保留字的个数}
   txmax = 100; {标识符表长度}
   nmax = 14; {数字的最大位数}
   al = 10; {标识符的长度}
@@ -14,11 +14,11 @@ type
   symbol = (nul, ident, number, plus, minus, times, slash, oddsym,
   eql, neq, lss, leq, gtr, geq, lparen, rparen, comma, semicolon,
   period, becomes, beginsym, endsym, ifsym, thensym,
-  whilesym, dosym, callsym, constsym, varsym, procsym,readsym,writesym);
+  whilesym, dosym, callsym, constsym, varsym, procsym );
   alfa = packed array [1..al] of char;
   objection = (constant, variable, proce);
   symset = set of symbol;
-  fct = (lit, opr, lod, sto, cal, int, jmp, jpc,red,wrt); {functions}
+  fct = (lit, opr, lod, sto, cal, int, jmp, jpc); {functions}
   instruction = packed record
     f : fct;  {功能码}
     l : 0..levmax; {相对层数}
@@ -61,7 +61,8 @@ var
 
 procedure error (n : integer);
 begin 
-  writeln('****', ' ' : cc-1, '↑', n : 2);  err := err + 1
+  writeln('****', ' ' : cc-1, '↑', n : 2);  
+  err := err + 1
 end {error};
 
 procedure getsym;
@@ -78,11 +79,11 @@ procedure getsym;
             close(output);
             exit;
         end;
-        ll := 0; cc := 0; write(output,cx : 5, ' ');
+        ll := 0; cc := 0; //write(output,cx : 5, ' ');
         
         while not eoln(input) do 
         begin
-            ll := ll + 1; read(input,ch); write(output,ch);
+            ll := ll + 1; read(input,ch); //write(output,ch);
             line[ll] := ch;
         end;
         
@@ -92,13 +93,11 @@ procedure getsym;
         line[ll] := ' '
     end;
     cc := cc + 1; ch := line[cc];
-
   end {getch};
 begin {getsym}
     while ch = ' ' do getch;
     if ch in ['a'..'z'] then
-    begin {标识符或保留字} 
-        k := 0;
+    begin {标识符或保留字} k := 0;
         repeat
             if k < al then
             begin k:= k + 1; a[k] := ch
@@ -254,7 +253,7 @@ cx0 : integer; {本过程代码起始下标}
   begin  {列出本程序体生成的代码}
   for i := cx0 to cx-1 do
     with code[i] do
-      writeln(i, mnemonic[f] : 5, l : 3, a : 5)//中间代码
+      writeln(i:4, mnemonic[f] : 7, l : 3, a : 5)//中间代码
   end {listcode};
   procedure  statement(fsys : symset);
     var  i, cx1, cx2 : integer;
@@ -396,46 +395,6 @@ begin
   cx2 := cx;  gen(jpc, 0, 0);
   if sym = dosym then getsym else error(18);
   statement(fsys);  gen(jmp, 0, cx1);  code[cx2].a := cx
-end
-else if sym = readsym then
-begin
-    getsym;
-    if sym = lparen then
-      repeat
-        getsym;
-        if sym = ident then
-        begin
-          i := position(id);
-          if i = 0 then error(11)
-          else if table[i].kind <> variable then
-          begin
-            error(12);
-            i:=0;
-          end
-          else
-            with table[i] do gen(red,lev-level,adr)
-        end
-        else error(4);
-        getsym;
-      until sym <> comma
-    else error(40);
-    if sym <> rparen then error(22);
-    getsym
-end
-else if sym = writesym then
-begin
-    getsym;
-    if sym = lparen then
-    begin
-      repeat
-        getsym;
-        expression([rparen,comma]+fsys);
-        gen(wrt,0,0);
-      until sym<>comma;
-      if sym <> rparen then error(22);
-      getsym
-    end
-    else error(40)
 end;
 test(fsys, [ ], 19)
 end {statement};
@@ -445,7 +404,8 @@ begin {block}
   if lev > levmax then error(32);
   repeat
     if sym = constsym then 
-    begin  getsym;
+    begin  
+      getsym;
       repeat 
         constdeclaration;
         while sym = comma do
@@ -504,7 +464,7 @@ begin
 end {base};
 
 begin  
-  writeln('START PL/0');
+  writeln(output,'START PL/0');
   t := 0;  b := 1;  p := 0;
   s[1] := 0;  s[2] := 0;  s[3] := 0;
   repeat
@@ -556,7 +516,7 @@ begin
         end;
     sto : begin
           s[base(l) + a] := s[t];  
-          writeln(s[t]);//栈数据
+          writeln(output,s[t]);//栈数据
           t := t-1
         end;
     cal : begin {generate new block mark}
@@ -572,12 +532,12 @@ begin
         end
     end {with, case}
   until p = 0;
-  write('END PL/0');//栈数据
+  write(output,'END PL/0');//栈数据
 end {interpret};
 begin  {主程序}
-  assign(input,'step2input.txt');
+  assign(input,'PL0Source.pas');
   reset(input);
-  assign(output,'aim2');
+  assign(output,'StackCode1.txt');
   rewrite(output);
   for ch := 'A' to ';' do  ssym[ch] := nul;
   word[1] := 'begin     '; word[2] := 'call      ';
@@ -585,15 +545,13 @@ begin  {主程序}
   word[5] := 'end       '; word[6] := 'if        ';
   word[7] := 'odd       '; word[8] := 'procedure ';
   word[9] := 'then      '; word[10] := 'var       ';
-  word[11] := 'while     '; word[12] := 'read      ';
-  word[13] := 'write     ';
+  word[11] := 'while     ';
   wsym[1] := beginsym;   wsym[2] := callsym;
   wsym[3] := constsym;   wsym[4] := dosym;
   wsym[5] := endsym;    wsym[6] := ifsym;
   wsym[7] := oddsym;    wsym[8] := procsym;
   wsym[9] := thensym;    wsym[10] := varsym;
-  wsym[11] := whilesym; wsym[12] := readsym;
-  wsym[13] := writesym;
+  wsym[11] := whilesym;
   ssym['+'] := plus;      ssym['-'] := minus;
   ssym['*'] := times;     ssym['/'] := slash;
   ssym['('] := lparen;     ssym[')'] := rparen;
@@ -605,7 +563,6 @@ begin  {主程序}
   mnemonic[lod] := 'LOD';    mnemonic[sto] := 'STO';
   mnemonic[cal] := 'CAL';    mnemonic[int] := 'INT';
   mnemonic[jmp] := 'JMP';    mnemonic[jpc] := 'JPC';
-  mnemonic[red] := 'RED';    mnemonic[wrt] := 'WRT';
   declbegsys := [constsym, varsym, procsym];
   statbegsys := [beginsym, callsym, ifsym, whilesym];
   facbegsys := [ident, number, lparen];

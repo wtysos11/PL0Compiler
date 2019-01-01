@@ -1,5 +1,7 @@
-program  PL0 ( input, output);
+{$mode objfpc}
+program  PL0;
 {带有代码生成的PL0编译程序}
+uses Sysutils;
 const
   norw = 11; {保留字的个数}
   txmax = 100; {标识符表长度}
@@ -18,10 +20,10 @@ type
   symset = set of symbol;
   fct = (lit, opr, lod, sto, cal, int, jmp, jpc); {functions}
   instruction = packed record
-f : fct;  {功能码}
-l : 0..levmax; {相对层数}
-a : 0..amax; {相对地址}
-end;
+    f : fct;  {功能码}
+    l : 0..levmax; {相对层数}
+    a : 0..amax; {相对地址}
+  end;
   {LIT 0,a : 取常数a
   OPR 0,a : 执行运算a
   LOD l,a : 取层差为l的层﹑相对地址为a的变量
@@ -31,13 +33,15 @@ end;
   JMP 0,a : 转移到指令地址a处
   JPC 0,a : 条件转移到指令地址a处 }
 var
+  input : text;
+  output : text;
+  fr,st,ne,lt,gt : char; {不等于、小于等于、大于等于这三个字符的特殊表示，开头为两个前缀字符s}
   ch : char; {最近读到的字符}
   sym : symbol; {最近读到的符号}
   id : alfa; {最近读到的标识符}
   num : integer; {最近读到的数}
   cc : integer; {当前行的字符计数}
   ll : integer; {当前行的长度}
-  fr,st,ne,lt,gt : char; {不等于、小于等于、大于等于这三个字符的特殊表示，开头为两个前缀字符s}
   kk, err : integer;
   cx : integer; {代码数组的当前下标}
   line : array [1..81] of char;
@@ -54,7 +58,7 @@ var
            case kind : objection of
             constant : (val : integer);
             variable, proce : (level, adr : integer)
-end;
+  end;
 
 procedure error (n : integer);
 begin 
@@ -74,6 +78,7 @@ end {error};
 }
 procedure getsym;
   var  i, j, k : integer;
+  
   procedure  getch;
   begin
     if cc = ll then{读完一行之后，在读一行}
@@ -81,20 +86,25 @@ procedure getsym;
         if eof(input) then {读到文件末尾，退出}
         begin
             write('PROGRAM INCOMPLETE');
+            close(input);
+            close(output);
             exit;
         end;
         ll := 0; cc := 0; write(cx : 5, ' ');
-        while  eoln(input) do {没有抵达行尾，继续读}
+        
+        while not eoln(input) do 
         begin
-            ll := ll + 1; read(ch); write(ch);
-            line[ll] := ch
+            ll := ll + 1; read(input,ch); write(output,ch);
+            line[ll] := ch;
         end;
-        writeln; ll := ll + 1; read(line[ll])
+        
+        writeln(output); ll := ll + 1; read(input,line[ll]);
     end;
     cc := cc + 1; ch := line[cc];
     {对于三种特殊符号进行处理}
     if ch = fr then
     begin
+        writeln('strange number');
         cc := cc +1;
         ch := line[cc];
         if ch = st then
@@ -111,58 +121,98 @@ procedure getsym;
   end {getch};
 begin {getsym}
     while ch = ' ' do getch;
-    if ch in ['A'..'Z'] then
+    if ch in ['a'..'z'] then
     begin {标识符或保留字} k := 0;
         repeat
             if k < al then
             begin k:= k + 1; a[k] := ch
             end;
             getch
-        until  (ch in ['A'..'Z', '0'..'9']);
-        if k >= kk  then kk := k else
-        repeat a[kk] := ' '; kk := kk-1
-        until kk = k;
+        until  not (ch in ['a'..'z', '0'..'9']);
+        if k >= kk  then kk := k 
+        else
+          repeat a[kk] := ' '; kk := kk-1
+          until kk = k;
         id := a;  i := 1;  j := norw;
         repeat  k := (i+j) div 2;
-            if id <= word[k] then j := k-1;
+            if id <= word[k] then j := k - 1;
             if id >= word[k] then i := k + 1
         until i > j;
         if i-1 > j then sym := wsym[k] else sym := ident
-    end else
-    if ch in ['0'..'9'] then
-        begin {数字} 
-        k := 0;  num := 0;  sym := number;
-        repeat
-            num := 10*num + (ord(ch)-ord(0));
-            k := k + 1;  getch;
-        until  (ch in ['0'..'9']);
-        if k > nmax then  error(30)
-        end else
-        if ch = ':' then
-        begin  getch;
-        if ch = '=' then
-        begin  sym := becomes; getch end
-        else  sym := nul;
-        end else
-        begin  sym := ssym[ch];  getch
-        end
-    end {getsym};
-procedure  gen(x : fct; y, z : integer);
-begin
-  if cx > cxmax then 
-  begin write('PROGRAM TOO LONG');
-  exit;
-  end;
-  with code[cx] do
-  begin  f := x;  l := y;  a := z
-  end;
-  cx := cx + 1
-end {gen};
+    end 
+    else if ch in ['0'..'9'] then
+    begin {数字}
+        k := 0;
+        num := 0;
+        sym := number;
+        Repeat
+          num := 10*num+(ord(ch)-ord('0'));
+          k := k+1;
+          getch
+        Until Not( ch In ['0'..'9']);
+        If k > nmax Then error(30)
+    end
+    else if ch = ':' then
+    begin
+      getch;
+      if ch = '=' then
+      begin
+        sym := becomes;
+        getch
+      end
+      else sym := nul
+    end
+    else if ch = '<' then
+    begin
+        sym := lss;
+        getch
+    end
+    else if ch = '>' then
+    begin
+        sym := gtr;
+        getch
+    end
+    else if ch = ne then
+    begin
+        sym := neq;
+        getch
+    end
+    else if ch = lt then
+    begin
+        sym := leq;
+        getch
+    end
+    else if ch = gt then
+    begin
+        sym := geq;
+        getch
+    end
+    else
+    begin
+        sym := ssym[ch];
+        getch
+    end
+  end {getsym};
+  procedure  gen(x : fct; y, z : integer);
+  begin
+    if cx > cxmax then 
+        begin 
+        writeln('PROGRAM TOO LONG');
+        close(input);
+        close(output);
+        exit;
+    end;
+    with code[cx] do
+        begin  f := x;  l := y;  a := z
+    end;
+    cx := cx + 1
+  end {gen};
 procedure  test(s1, s2 : symset; n : integer);
 begin
-  if  (sym in s1) then
-  begin  error(n);  s1 := s1 + s2;
-while  (sym in s1) do getsym
+  if  not (sym in s1) then
+  begin  
+      error(n);  s1 := s1 + s2;
+      while  not (sym in s1) do getsym
   end
 end {test};
 procedure  block(lev, tx : integer; fsys : symset);
@@ -172,66 +222,74 @@ tx0 : integer; {本过程标识表起始下标}
 cx0 : integer; {本过程代码起始下标}
   procedure  enter(k : objection);
   begin {把object填入符号表中}
-tx := tx +1;
-with table[tx] do
-begin  name := id;  kind := k;
-  case k of
-  constant : begin
-            if num > amax then
-            begin error(30); num := 0 end;
-            val := num
-           end;
-  variable : begin
-            level := lev;  adr := dx;  dx := dx +1;
-          end;
-  proce : level := lev
-  end
-end
+    tx := tx +1;
+    with table[tx] do
+    begin  
+        name := id;  kind := k;
+        case k of
+            constant : begin
+                        if num > amax then
+                        begin error(30); num := 0 end;
+                        val := num
+                    end;
+            variable : begin
+                        level := lev;  adr := dx;  dx := dx +1;
+                    end;
+            proce : level := lev
+        end
+    end
   end {enter};
   function  position(id : alfa) : integer;
-var  i : integer;
+  var  i : integer;
   begin {在标识符表中查标识符id}
-table[0].name := id;  i := tx;
-while table[i].name <> id do i := i-1;
-position := i
+    table[0].name := id;  i := tx;
+    while table[i].name <> id do i := i-1;
+    position := i
   end {position};
   procedure constdeclaration;
   begin
-if sym = ident then
-begin  getsym;
-  if sym in [eql, becomes] then
-  begin
-    if sym = becomes then error(1);
-    getsym;
-    if sym = number then 
-    begin  enter(constant); getsym
-    end
-    else error(2)
-  end else error(3)
-end else error(4)
+    if sym = ident then
+    begin  
+      getsym;
+      if sym in [eql, becomes] then
+      begin
+          if sym = becomes then error(1);
+          getsym;
+          if sym = number then 
+          begin  enter(constant); getsym
+          end
+          else error(2)
+      end 
+      else error(3)
+    end 
+    else error(4)
   end {constdeclaration};
   procedure  vardeclaration;
   begin
-if sym = ident then
-begin  enter(variable);  getsym
-end else error(4)
+    if sym = ident then
+    begin  
+        enter(variable);  
+        getsym
+    end 
+    else error(4)
   end {vardeclaration};
   procedure  listcode;
-var  i : integer;
+  var  i : integer;
   begin  {列出本程序体生成的代码}
-for i := cx0 to cx-1 do
-  with code[i] do
-    writeln(i, mnemonic[f] : 5, l : 3, a : 5)
+  for i := cx0 to cx-1 do
+    with code[i] do
+      writeln(i, mnemonic[f] : 5, l : 3, a : 5)//中间代码
   end {listcode};
   procedure  statement(fsys : symset);
-var  i, cx1, cx2 : integer;
-procedure  expression(fsys : symset);
-  var  addop : symbol;
+    var  i, cx1, cx2 : integer;
+  procedure  expression(fsys : symset);
+    var  addop : symbol;
   procedure  term(fsys : symset);
     var  mulop : symbol;
-    procedure  factor(fsys : symset);
-      var i : integer;
-    begin  test(facbegsys, fsys, 24);
+  procedure  factor(fsys : symset);
+    var i : integer;
+    begin  
+      test(facbegsys, fsys, 24);
       while sym in facbegsys do
       begin
         if sym = ident then
@@ -245,19 +303,19 @@ procedure  expression(fsys : symset);
               proce : error(21)
               end;
           getsym
-        end else
-        if sym = number then
-       begin
-         if num > amax then
-         begin error(30); num := 0 end;
-         gen(lit, 0, num); getsym
-       end else
-       if sym = lparen then
-       begin  getsym;
-         expression([rparen]+fsys);
-         if sym = rparen then getsym
-         else error(22)
-       end;
+        end 
+        else if sym = number then
+          begin
+            if num > amax then
+            begin error(30); num := 0 end;
+            gen(lit, 0, num); getsym
+          end 
+        else if sym = lparen then
+        begin  getsym;
+          expression([rparen]+fsys);
+          if sym = rparen then getsym
+          else error(22)
+        end;
        test(fsys, [lparen], 23)
      end
     end {factor};
@@ -277,7 +335,9 @@ begin {expression}
     addop := sym;  getsym;
     term(fsys+[plus, minus]);
     if addop = minus then gen(opr, 0, 1)
-  end else term(fsys+[plus, minus]);
+  end 
+  else term(fsys+[plus, minus]);
+
   while sym in [plus, minus] do
   begin
     addop := sym;  getsym;
@@ -292,11 +352,13 @@ begin
   if sym = oddsym then 
   begin
     getsym;  expression(fsys);  gen(opr, 0, 6)
-  end else
+  end 
+  else
   begin
     expression([eql, neq, lss, gtr, leq, geq] + fsys);
-    if  (sym in [eql, neq, lss, leq, gtr, geq]) then
-      error(20)  else
+    if not (sym in [eql, neq, lss, leq, gtr, geq]) then
+      error(20)  
+    else
     begin
       relop := sym;  getsym;  expression(fsys);
       case relop of
@@ -310,19 +372,19 @@ begin
     end
   end
 end {condition};
-  begin {statement}
+begin {statement}
 if sym = ident then 
 begin  i := position(id);
-  if i = 0 then error(11) else
-  if table[i].kind <> variable then
+  if i = 0 then error(11) 
+  else if table[i].kind <> variable then
   begin {对非变量赋值} error(12); i := 0; end;
   getsym;
   if sym = becomes then getsym else error(13);
   expression(fsys);
   if i <> 0 then
     with table[i] do gen(sto, lev-level, adr)
-end else
-if sym = callsym then
+end 
+else if sym = callsym then
 begin  getsym;
   if sym <> ident then error(14) else
   begin 
@@ -334,15 +396,15 @@ begin  getsym;
         else error(15);
     getsym
   end
-end else
-if sym = ifsym then
+end 
+else if sym = ifsym then
 begin
   getsym;  condition([thensym, dosym]+fsys);
   if sym = thensym then getsym else error(16);
   cx1 := cx;  gen(jpc, 0, 0);
   statement(fsys);  code[cx1].a := cx
-end else
-if sym = beginsym then
+end 
+else if sym = beginsym then
 begin
   getsym;  statement([semicolon, endsym]+fsys);
   while sym in [semicolon]+statbegsys do
@@ -351,8 +413,8 @@ begin
     statement([semicolon, endsym]+fsys)
   end;
   if sym = endsym then getsym else error(17)
-end else
-if sym = whilesym then
+end 
+else if sym = whilesym then
 begin
   cx1 := cx;  getsym;  condition([dosym]+fsys);
   cx2 := cx;  gen(jpc, 0, 0);
@@ -360,45 +422,46 @@ begin
   statement(fsys);  gen(jmp, 0, cx1);  code[cx2].a := cx
 end;
 test(fsys, [ ], 19)
-  end {statement};
+end {statement};
 begin {block}
   dx := 3;  tx0 := tx;  table[tx].adr := cx; 
   gen(jmp, 0, 0);
   if lev > levmax then error(32);
   repeat
-if sym = constsym then 
-begin  getsym;
-  repeat 
-    constdeclaration;
-    while sym = comma do
-    begin getsym; constdeclaration end;
-    if sym = semicolon then getsym else error(5)
-  until sym <> ident
-end;
-if sym = varsym then
-begin  getsym;
-  repeat 
-    vardeclaration;
-    while sym = comma do
-    begin  getsym;  vardeclaration  end;
-    if sym = semicolon then getsym else error(5)
-  until sym <> ident;
-end;
-while sym = procsym do
-begin  getsym;
-  if sym = ident then
-  begin  enter(proce);  getsym  end
-  else error(4);
-  if sym = semicolon then getsym else error(5);
-  block(lev+1, tx, [semicolon]+fsys);
-  if sym = semicolon then
-  begin  getsym;
-    test(statbegsys+[ident, procsym], fsys, 6)
-  end
-  else error(5)
-end;
-test(statbegsys+[ident], declbegsys, 7)
-  until  (sym in declbegsys);
+    if sym = constsym then 
+    begin  getsym;
+      repeat 
+        constdeclaration;
+        while sym = comma do
+        begin getsym; constdeclaration end;
+        if sym = semicolon then getsym else error(5)
+      until sym <> ident
+    end;
+    if sym = varsym then
+    begin  getsym;
+      repeat 
+        vardeclaration;
+        while sym = comma do
+        begin  getsym;  vardeclaration  end;
+        if sym = semicolon then getsym else error(5)
+      until sym <> ident;
+    end;
+    while sym = procsym do
+    begin  getsym;
+      if sym = ident then
+      begin  enter(proce);  getsym  end
+      else error(4);
+      if sym = semicolon then getsym else error(5);
+      block(lev+1, tx, [semicolon]+fsys);
+      if sym = semicolon then
+      begin  
+        getsym;
+        test(statbegsys+[ident, procsym], fsys, 6)
+      end
+      else error(5)
+    end;
+  test(statbegsys+[ident], declbegsys, 7)
+  until  not (sym in declbegsys);
   code[table[tx0].adr].a := cx;
   with table[tx0] do
   begin  adr := cx; {代码开始地址}
@@ -409,7 +472,8 @@ test(statbegsys+[ident], declbegsys, 7)
   test(fsys, [ ], 8);
   listcode;
 end  {block};
-  procedure  interpret;
+
+procedure  interpret;
 const  stacksize = 500;
 var  p, b, t : integer; {程序地址寄存器, 基地址寄存器,栈顶地址寄存器}
      i : instruction; {指令寄存器}
@@ -422,17 +486,19 @@ begin
   begin  b1 := s[b1];  l := l-1 end;
   base := b1
 end {base};
-  begin  writeln('START PL/0');
-t := 0;  b := 1;  p := 0;
-s[1] := 0;  s[2] := 0;  s[3] := 0;
-repeat
-  i := code[p];  p := p+1;
-  with i do
-  case f of
-  lit : begin
-       t := t+1;  s[t] := a
-      end;
-  opr : case a of {运算}
+
+begin  
+  writeln('START PL/0');
+  t := 0;  b := 1;  p := 0;
+  s[1] := 0;  s[2] := 0;  s[3] := 0;
+  repeat
+    i := code[p];  p := p+1;
+    with i do
+    case f of
+    lit : begin
+        t := t+1;  s[t] := a
+        end;
+    opr : case a of {运算}
        0 : begin {返回}
             t := b-1;  p := s[t+3];  b := s[t+2];
           end;
@@ -469,41 +535,46 @@ repeat
             s[t] := ord(s[t] <= s[t+1])
           end;
        end;
-  lod : begin
-        t := t + 1;  s[t] := s[base(l) + a]
-       end;
-  sto : begin
-        s[base(l) + a] := s[t];  writeln(s[t]);
-        t := t-1
-      end;
-  cal : begin {generate new block mark}
-        s[t+1] := base( l );  s[t+2] := b;
-        s[t+3] := p;
-        b := t+1;  p := a
-      end;
-  int : t := t + a;
-  jmp : p := a;
-  jpc : begin
-        if s[t] = 0 then p := a;
-        t := t-1
-      end
-  end {with, case}
-until p = 0;
-write('END PL/0');
-  end {interpret};
+    lod : begin
+          t := t + 1;  s[t] := s[base(l) + a]
+        end;
+    sto : begin
+          s[base(l) + a] := s[t];  
+          writeln(s[t]);//栈数据
+          t := t-1
+        end;
+    cal : begin {generate new block mark}
+          s[t+1] := base( l );  s[t+2] := b;
+          s[t+3] := p;
+          b := t+1;  p := a
+        end;
+    int : t := t + a;
+    jmp : p := a;
+    jpc : begin
+          if s[t] = 0 then p := a;
+          t := t-1
+        end
+    end {with, case}
+  until p = 0;
+  write('END PL/0');//栈数据
+end {interpret};
 begin  {主程序}
   fr := chr(226);
   st := chr(137);
   ne := chr(160);
   lt := chr(164);
   gt := chr(165);
+  assign(input,'PL0Source.pas');
+  reset(input);
+  assign(output,'aim');
+  rewrite(output);
   for ch := 'A' to ';' do  ssym[ch] := nul;
-  word[1] := 'BEGIN     '; word[2] := 'CALL      ';
-  word[3] := 'CONST     '; word[4] := 'DO        ';
-  word[5] := 'END       '; word[6] := 'IF        ';
-  word[7] := 'ODD       '; word[8] := 'PROCEDURE ';
-  word[9] := 'THEN      '; word[10] := 'VAR       ';
-  word[11] := 'WHILE     ';
+  word[1] := 'begin     '; word[2] := 'call      ';
+  word[3] := 'const     '; word[4] := 'do        ';
+  word[5] := 'end       '; word[6] := 'if        ';
+  word[7] := 'odd       '; word[8] := 'procedure ';
+  word[9] := 'then      '; word[10] := 'var       ';
+  word[11] := 'while     ';
   wsym[1] := beginsym;   wsym[2] := callsym;
   wsym[3] := constsym;   wsym[4] := dosym;
   wsym[5] := endsym;    wsym[6] := ifsym;
@@ -531,6 +602,8 @@ begin  {主程序}
   if sym <> period then error(9);
   if err = 0 then interpret
           else write('ERRORS IN PL/0 PROGRAM');
+  close(input);
+  close(output);
 end.
 
 

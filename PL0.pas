@@ -1,6 +1,5 @@
 program  PL0 ( input, output);
 {带有代码生成的PL0编译程序}
-label  99;
 const
   norw = 11; {保留字的个数}
   txmax = 100; {标识符表长度}
@@ -38,6 +37,7 @@ var
   num : integer; {最近读到的数}
   cc : integer; {当前行的字符计数}
   ll : integer; {当前行的长度}
+  fr,st,ne,lt,gt : char; {不等于、小于等于、大于等于这三个字符的特殊表示，开头为两个前缀字符s}
   kk, err : integer;
   cx : integer; {代码数组的当前下标}
   line : array [1..81] of char;
@@ -60,69 +60,98 @@ procedure error (n : integer);
 begin 
   writeln('****', ' ' : cc-1, '↑', n : 2);  err := err + 1
 end {error};
+{
+    问题：对于不等号、小于等于和大于等于，有读入并处理的需要
+    但是这几个符号不能够用ASCII码表示
+    如果在用字符串的情况下，怎样在大量改变代码的情况下实现
 
+    关键在于ch。
+    想法：1.改写本地代码，用不常用符号代替这三个字符，并在读取的时候进行转义
+    问题：这三个符号是字符串形式表示的，改如何进行读取？
+≠ 226 137 160
+≤ 226 137 164
+≥ 226 137 165
+}
 procedure getsym;
   var  i, j, k : integer;
-  procedure  getch ;
+  procedure  getch;
   begin
-if cc = ll then
-begin
-  if eof(input) then
-  begin
-    write('PROGRAM INCOMPLETE'); goto 99
-  end;
-  ll := 0; cc := 0; write(cx : 5, ' ');
-  while  eoln(input) do
-  begin
-    ll := ll + 1; read(ch); write(ch);
-    line[ll] := ch
-  end;
-  writeln; ll := ll + 1; read(line[ll])
-end;
-cc := cc + 1; ch := line[cc]
+    if cc = ll then{读完一行之后，在读一行}
+    begin
+        if eof(input) then {读到文件末尾，退出}
+        begin
+            write('PROGRAM INCOMPLETE');
+            exit;
+        end;
+        ll := 0; cc := 0; write(cx : 5, ' ');
+        while  eoln(input) do {没有抵达行尾，继续读}
+        begin
+            ll := ll + 1; read(ch); write(ch);
+            line[ll] := ch
+        end;
+        writeln; ll := ll + 1; read(line[ll])
+    end;
+    cc := cc + 1; ch := line[cc];
+    {对于三种特殊符号进行处理}
+    if ch = fr then
+    begin
+        cc := cc +1;
+        ch := line[cc];
+        if ch = st then
+        begin
+            cc := cc+1;
+            ch := line[cc];
+        end
+        else
+        begin
+            cc := cc-1;
+            ch := line[cc];
+        end
+    end;
   end {getch};
 begin {getsym}
-  while ch = ' ' do getch;
-  if ch in ['A'..'Z'] then
-  begin {标识符或保留字} k := 0;
-repeat
-  if k < al then
-  begin k:= k + 1; a[k] := ch
-  end;
-  getch
-until  (ch in ['A'..'Z', '0'..'9']);
-if k >= kk  then kk := k else
-  repeat a[kk] := ' '; kk := kk-1
-  until kk = k;
-id := a;  i := 1;  j := norw;
-repeat  k := (i+j) div 2;
-  if id <= word[k] then j := k-1;
-  if id >= word[k] then i := k + 1
-until i > j;
-if i-1 > j then sym := wsym[k] else sym := ident
-  end else
-  if ch in ['0'..'9'] then
-  begin {数字} 
-k := 0;  num := 0;  sym := number;
-repeat
-  num := 10*num + (ord(ch)-ord(0));
-  k := k + 1;  getch;
-until  (ch in ['0'..'9']);
-if k > nmax then  error(30)
-  end else
-  if ch = ':' then
-  begin  getch;
-if ch = '=' then
-begin  sym := becomes; getch end
-else  sym := nul;
-  end else
-  begin  sym := ssym[ch];  getch
-  end
-end {getsym};
+    while ch = ' ' do getch;
+    if ch in ['A'..'Z'] then
+    begin {标识符或保留字} k := 0;
+        repeat
+            if k < al then
+            begin k:= k + 1; a[k] := ch
+            end;
+            getch
+        until  (ch in ['A'..'Z', '0'..'9']);
+        if k >= kk  then kk := k else
+        repeat a[kk] := ' '; kk := kk-1
+        until kk = k;
+        id := a;  i := 1;  j := norw;
+        repeat  k := (i+j) div 2;
+            if id <= word[k] then j := k-1;
+            if id >= word[k] then i := k + 1
+        until i > j;
+        if i-1 > j then sym := wsym[k] else sym := ident
+    end else
+    if ch in ['0'..'9'] then
+        begin {数字} 
+        k := 0;  num := 0;  sym := number;
+        repeat
+            num := 10*num + (ord(ch)-ord(0));
+            k := k + 1;  getch;
+        until  (ch in ['0'..'9']);
+        if k > nmax then  error(30)
+        end else
+        if ch = ':' then
+        begin  getch;
+        if ch = '=' then
+        begin  sym := becomes; getch end
+        else  sym := nul;
+        end else
+        begin  sym := ssym[ch];  getch
+        end
+    end {getsym};
 procedure  gen(x : fct; y, z : integer);
 begin
   if cx > cxmax then 
-  begin write('PROGRAM TOO LONG'); goto 99
+  begin write('PROGRAM TOO LONG');
+  exit;
   end;
   with code[cx] do
   begin  f := x;  l := y;  a := z
@@ -212,7 +241,7 @@ procedure  expression(fsys : symset);
             with table[i] do
               case kind of
               constant : gen(lit, 0, val);
-              variable : gen(lod, lev-level, adr);l
+              variable : gen(lod, lev-level, adr);
               proce : error(21)
               end;
           getsym
@@ -374,7 +403,7 @@ test(statbegsys+[ident], declbegsys, 7)
   with table[tx0] do
   begin  adr := cx; {代码开始地址}
   end;
-  cx0 := cx; gen(int, 0, dx)
+  cx0 := cx; gen(int, 0, dx);
   statement([semicolon, endsym]+fsys);
   gen(opr, 0, 0); {生成返回指令}
   test(fsys, [ ], 8);
@@ -431,13 +460,13 @@ repeat
             s[t] := ord(s[t] < s[t+1])
           end;
        11: begin  t := t-1;
-            s[t] := ord(s[t] ≥ s[t+1])
+            s[t] := ord(s[t] >= s[t+1])
           end;
        12 : begin  t := t-1;
             s[t] := ord(s[t] > s[t+1])
           end;
        13 : begin  t := t-1;
-            s[t] := ord(s[t] ≤ s[t+1])
+            s[t] := ord(s[t] <= s[t+1])
           end;
        end;
   lod : begin
@@ -463,6 +492,11 @@ until p = 0;
 write('END PL/0');
   end {interpret};
 begin  {主程序}
+  fr := chr(226);
+  st := chr(137);
+  ne := chr(160);
+  lt := chr(164);
+  gt := chr(165);
   for ch := 'A' to ';' do  ssym[ch] := nul;
   word[1] := 'BEGIN     '; word[2] := 'CALL      ';
   word[3] := 'CONST     '; word[4] := 'DO        ';
@@ -480,9 +514,9 @@ begin  {主程序}
   ssym['*'] := times;     ssym['/'] := slash;
   ssym['('] := lparen;     ssym[')'] := rparen;
   ssym['='] := eql;       ssym[','] := comma;
-  ssym['.'] := period;     ssym['≠'] := neq;
+  ssym['.'] := period;     ssym[ne] := neq;
   ssym['<'] := lss;       ssym['>'] := gtr;
-  ssym['≤'] := leq;      ssym['≥'] := geq;
+  ssym[lt] := leq;      ssym[gt] := geq;
   ssym[';'] := semicolon;
   mnemonic[lit] := 'LIT';     mnemonic[opr] := 'OPR';
   mnemonic[lod] := 'LOD';    mnemonic[sto] := 'STO';
@@ -491,13 +525,12 @@ begin  {主程序}
   declbegsys := [constsym, varsym, procsym];
   statbegsys := [beginsym, callsym, ifsym, whilesym];
   facbegsys := [ident, number, lparen];
-  page(output); err := 0;
+  {page(output);} err := 0;
   cc := 0;  cx := 0;  ll := 0;  ch := ' ';  kk := al;  getsym;
   block(0, 0, [period]+declbegsys+statbegsys);
   if sym <> period then error(9);
   if err = 0 then interpret
           else write('ERRORS IN PL/0 PROGRAM');
-99 : writeln
 end.
 
 
